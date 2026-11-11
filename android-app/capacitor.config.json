@@ -1,0 +1,15 @@
+{
+  "appId": "fr.approfrites.livraisons",
+  "appName": "Livraisons",
+  "webDir": "www",
+  "server": {
+    "url": "https://ringothomas.github.io/livraisons/",
+    "cleartext": false
+  },
+  "android": {
+    "useLegacyBridge": true
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "livraisons-appro-frites",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Appli Android des livreurs Appro Frites (enveloppe de l'appli web, avec suivi GPS écran éteint)",
+  "dependencies": {
+    "@capacitor/android": "7.6.10",
+    "@capacitor/core": "7.6.10",
+    "@capacitor/local-notifications": "7.0.7",
+    "@capacitor-community/background-geolocation": "1.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.6.10"
+  }
+}

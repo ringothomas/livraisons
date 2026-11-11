@@ -1,7 +1,7 @@
 // Garde l'appli livreurs utilisable même avec un réseau faible :
 // la page est servie depuis le cache si internet ne répond pas.
-const CACHE = "livraisons-v1";
-const FICHIERS = ["./", "./index.html", "./manifest.json", "./icone-192.png", "./icone-512.png"];
+const CACHE = "livraisons-v2";
+const FICHIERS = ["./", "./index.html", "./manifest.json", "./icone-192.png", "./icone-512.png", "./vendor/capacitor.js"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FICHIERS)).then(() => self.skipWaiting()));
 });

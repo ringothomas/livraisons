@@ -110,13 +110,14 @@
       <button class="btn light" id="b-refresh">↻ Actualiser</button>
       <button class="btn light" id="b-logout">Changer de camion</button>
     </div>
-    <p class="small muted" style="margin-top:14px;">Garde l'appli à l'écran pendant la tournée (téléphone sur support) : c'est ce qui permet de suivre le camion et de reconnaître le client où tu t'arrêtes.</p>
+    <p class="small muted" style="margin-top:14px;" id="t-astuce">Garde l'appli à l'écran pendant la tournée (téléphone sur support) : c'est ce qui permet de suivre le camion et de reconnaître le client où tu t'arrêtes.</p>
   </section>
 
   <div id="v-msg" class="card hidden"></div>
 </div>
 <div class="toast hidden" id="toast"></div>
 
+<script src="vendor/capacitor.js"></script>
 <script>
 (function(){
 "use strict";
@@ -338,8 +339,49 @@ setInterval(viderFile, 20000);
 window.addEventListener("online", viderFile);
 
 /* ---------- GPS ---------- */
+// Dans l'appli Android, on passe par le suivi natif : il continue écran
+// éteint (notification « Suivi de la tournée » affichée pendant ce temps).
+const CAP = window.Capacitor;
+const NATIF = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const plugin = (nom)=>{ try{ return (CAP.Plugins && CAP.Plugins[nom]) || (window.capacitorExports && window.capacitorExports.registerPlugin(nom)) || (CAP.registerPlugin && CAP.registerPlugin(nom)); }catch(_){ return null; } };
 let watchId = null;
+if(NATIF){ const el=document.getElementById("t-astuce"); if(el) el.textContent = "Le suivi du camion continue même écran éteint (notification « Suivi de la tournée »). Pense à mettre la batterie de l'appli sur « Sans restriction » dans les réglages Android."; }
+async function demarrerGPSNatif(){
+  const BG = plugin("BackgroundGeolocation");
+  if(!BG) return false;
+  try{
+    const LN = plugin("LocalNotifications");
+    if(LN && LN.requestPermissions) await LN.requestPermissions().catch(()=>{});
+  }catch(_){}
+  watchId = await BG.addWatcher({
+    backgroundTitle: "Livraisons Appro Frites",
+    backgroundMessage: "Suivi de la tournée en cours",
+    requestPermissions: true,
+    stale: false,
+    distanceFilter: 15
+  }, (loc, err)=>{
+    if(err){
+      setGps(false, "GPS refusé");
+      if(err.code === "NOT_AUTHORIZED"){
+        toast("Autorise la localisation pour suivre la tournée");
+        setTimeout(()=>{ try{ BG.openSettings(); }catch(_){} }, 1500);
+      }
+      return;
+    }
+    if(loc) onPos({ coords:{ latitude:loc.latitude, longitude:loc.longitude, accuracy:loc.accuracy||0 } });
+  });
+  return true;
+}
 function demarrerGPS(){
+  if(watchId !== null) return;
+  if(NATIF){
+    watchId = "natif";
+    demarrerGPSNatif().then(ok=>{ if(!ok){ watchId = null; demarrerGPSWeb(); } }).catch(()=>{ watchId = null; demarrerGPSWeb(); });
+    return;
+  }
+  demarrerGPSWeb();
+}
+function demarrerGPSWeb(){
   if(watchId !== null || !("geolocation" in navigator)){ if(!("geolocation" in navigator)) setGps(false,"pas de GPS"); return; }
   watchId = navigator.geolocation.watchPosition(onPos, err=>{
     setGps(false, err.code===1 ? "GPS refusé" : "GPS indisponible");
