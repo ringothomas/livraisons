@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2c5770">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icone-192.png">
+<title>Suivi de livraison — Appro Frites</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{ --bg:#eef1f2; --surface:#fff; --ink:#17222b; --muted:#55636b; --line:#d8dfe2; --marine:#2c5770; --accent:#c97a2e; --ok:#2f7d4f; --ok-soft:#dcefe3; }
+  @media (prefers-color-scheme: dark){ :root{ --bg:#12181d; --surface:#1a2229; --ink:#eef2f4; --muted:#9aa8af; --line:#2c383f; --marine:#7fb0c9; --accent:#e08f3f; --ok:#6cbf8e; --ok-soft:#173427; } }
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:620px;margin:0 auto;padding:16px;}
+  .brand{font-weight:800;font-size:1.15rem;margin-bottom:12px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;}
+  .eta{font-size:2.6rem;font-weight:800;color:var(--marine);font-variant-numeric:tabular-nums;line-height:1.1;}
+  .muted{color:var(--muted);}
+  .ok{background:var(--ok-soft);border-color:var(--ok);}
+  #map{height:340px;border-radius:14px;border:1px solid var(--line);overflow:hidden;}
+  .pin{width:20px;height:20px;border-radius:50% 50% 50% 0;background:#c9542f;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .truck{font-size:28px;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));}
+  .small{font-size:.85rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">🥔 Appro Frites — suivi de livraison</div>
+  <div id="etat" class="card"><span class="muted">Chargement…</span></div>
+  <div id="map" style="display:none;"></div>
+  <p class="small muted" id="maj"></p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+"use strict";
+const API = "https://sxiewmxfeqssiwfcvmxk.supabase.co/functions/v1/livraison";
+const jeton = (location.hash || "").replace(/^#/, "") || new URLSearchParams(location.search).get("c") || "";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let map = null, mClient = null, mCamion = null, cadre = false;
+
+function carte(d){
+  const el = document.getElementById("map");
+  if(!window.L || !d.client || !Number.isFinite(d.client.lat)){ el.style.display = "none"; return; }
+  el.style.display = "block";
+  if(!map){
+    map = L.map("map", { zoomControl:true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18, attribution:"© contributeurs OpenStreetMap" }).addTo(map);
+    mClient = L.marker([d.client.lat, d.client.lng], { icon: L.divIcon({ className:"", html:'<div class="pin"></div>', iconSize:[26,26], iconAnchor:[13,30] }) }).addTo(map);
+  }
+  if(d.camion){
+    const ll = [d.camion.lat, d.camion.lng];
+    if(!mCamion) mCamion = L.marker(ll, { icon: L.divIcon({ className:"", html:'<div class="truck">🚚</div>', iconSize:[30,30], iconAnchor:[15,15] }) }).addTo(map);
+    else mCamion.setLatLng(ll);
+  } else if(mCamion){ map.removeLayer(mCamion); mCamion = null; }
+  if(!cadre){
+    cadre = true;
+    if(mCamion) map.fitBounds(L.latLngBounds([mClient.getLatLng(), mCamion.getLatLng()]).pad(0.25), { maxZoom:15 });
+    else map.setView([d.client.lat, d.client.lng], 14);
+  }
+}
+
+async function charger(){
+  const etat = document.getElementById("etat");
+  if(!/^[0-9a-f]{16,64}$/.test(jeton)){ etat.innerHTML = "Lien de suivi incomplet. Vérifie que tu as bien copié le lien en entier."; return; }
+  try{
+    const r = await fetch(API, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ action:"suivi", jeton }) });
+    const d = await r.json();
+    if(!d.ok){ etat.innerHTML = r.status===404 ? "Ce lien de suivi n'est plus valable." : "Suivi indisponible pour le moment."; return; }
+    if(d.statut === "pas_aujourdhui"){
+      etat.className = "card";
+      etat.innerHTML = `<div style="font-weight:700;font-size:1.2rem;">Pas de livraison prévue aujourd'hui</div><div class="muted">Les jours de livraison, tu verras ici où est le camion et l'heure d'arrivée estimée.</div>`;
+      document.getElementById("map").style.display = "none";
+    } else if(d.statut === "livre"){
+      etat.className = "card ok";
+      etat.innerHTML = `<div style="font-weight:800;font-size:1.4rem;">✅ Livré à ${new Date(d.fait_le).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div><div class="muted">${esc(d.nom)} — ${esc(d.ville)}. Merci !</div>`;
+      document.getElementById("map").style.display = "none";
+    } else {
+      etat.className = "card";
+      const avant = d.arrets_avant === 0 ? "Vous êtes le prochain arrêt !" : `${d.arrets_avant} arrêt${d.arrets_avant>1?"s":""} avant vous`;
+      etat.innerHTML = `<div class="muted">${esc(d.nom)} — ${esc(d.ville)}</div>
+        <div class="muted" style="margin-top:8px;">Arrivée estimée vers</div>
+        <div class="eta">${esc(d.heure_estimee)}</div>
+        <div style="font-weight:700;margin-top:6px;">${d.statut==="en_route" ? "🚚 Le camion est en route · " + avant : "La tournée n'a pas encore démarré · " + avant}</div>
+        <div class="small muted" style="margin-top:6px;">Heure indicative, elle se met à jour toute seule.</div>`;
+      carte(d);
+    }
+    document.getElementById("maj").textContent = "Mis à jour à " + new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  }catch(e){
+    document.getElementById("maj").textContent = "Pas de connexion, nouvel essai dans un instant…";
+  }
+}
+charger();
+setInterval(()=>{ if(document.visibilityState==="visible") charger(); }, 60000);
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") charger(); });
+})();
+</script>
+</body>
+</html>
